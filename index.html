@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>108 Face Blur (Pro Interaction v15)</title>
+    <title>108 Face Blur (Stable Export v16)</title>
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -24,6 +24,7 @@
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body>
@@ -42,7 +43,8 @@
             EyeOff: <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>,
             ZoomIn: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></>,
             ZoomOut: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>,
-            Undo: <><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></>
+            Undo: <><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></>,
+            Zip: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><rect x="7" y="2" width="10" height="12" rx="2" ry="2"/><path d="M12 2v6"/></>
         };
 
         const Icon = ({ p, className="" }) => (
@@ -55,6 +57,7 @@
             const [selId, setSelId] = useState(null);
             const [aiStatus, setAiStatus] = useState("init");
             const [isProcessing, setIsProcessing] = useState(false);
+            const [isZipping, setIsZipping] = useState(false);
             const [showOutlines, setShowOutlines] = useState(true);
             const [history, setHistory] = useState([]);
 
@@ -69,7 +72,6 @@
             const imgRef = useRef(null);
             const fileRef = useRef(null);
             
-            // Ref สำหรับจัดการ Interaction แบบ Real-time
             const interactionRef = useRef({ 
                 mode: 'IDLE', 
                 start: {x:0, y:0}, 
@@ -80,9 +82,11 @@
             });
 
             const getCurImg = () => images.find(i => i.id === curId);
-            const getFaces = () => getCurImg() ? (getCurImg().faces || []) : [];
+            const getFaces = (id = curId) => {
+                const img = images.find(i => i.id === id);
+                return img ? (img.faces || []) : [];
+            };
 
-            // History Management
             const saveToHistory = useCallback(() => {
                 const currentFaces = getFaces();
                 setHistory(prev => [...prev.slice(-19), JSON.parse(JSON.stringify(currentFaces))]);
@@ -96,7 +100,7 @@
                 setSelId(null);
             }, [history, curId]);
 
-            // AI Init
+            // Load AI Models
             useEffect(() => {
                 const initAI = async () => {
                     setAiStatus("loading");
@@ -113,7 +117,6 @@
                 initAI();
             }, []);
 
-            // Detection Logic
             const detectFaces = async (img, targetId) => {
                 if (!window.faceapi || isProcessing) return;
                 saveToHistory();
@@ -149,7 +152,6 @@
                 setIsProcessing(false);
             };
 
-            // Image Load Handler
             useEffect(() => {
                 const data = getCurImg();
                 if(!data) return;
@@ -173,8 +175,8 @@
                 };
             }, [curId, aiStatus]);
 
-            // Drawing Engine
-            const drawFaces = (ctx, img, faces, viewScale) => {
+            // --- Drawing Logic: แยก UI ออกจาก Export ---
+            const drawFaces = (ctx, img, faces, viewScale, isExport = false) => {
                 faces.forEach(f => {
                     const cx = f.x + f.w/2, cy = f.y + f.h/2, r = Math.max(f.w, f.h)/2;
                     const isSel = f.id === selId;
@@ -185,6 +187,7 @@
                         const fw = Math.floor(f.w + pad * 2), fh = Math.floor(f.h + pad * 2);
                         const off = document.createElement('canvas'); off.width = fw; off.height = fh;
                         const oCtx = off.getContext('2d');
+                        
                         oCtx.translate(-fx, -fy);
                         oCtx.filter = `blur(${f.blur}px)`;
                         oCtx.drawImage(img, 0, 0);
@@ -204,7 +207,8 @@
                         ctx.clip(); ctx.filter = `blur(${f.blur}px)`; ctx.drawImage(img, 0, 0); ctx.restore();
                     }
 
-                    if(showOutlines || isSel) {
+                    // Draw Selection UI only if not exporting
+                    if(!isExport && (showOutlines || isSel)) {
                         const lw = 2/viewScale;
                         ctx.save();
                         ctx.lineWidth = isSel ? lw*2 : lw;
@@ -240,7 +244,7 @@
                 ctx.translate(offset.x, offset.y);
                 ctx.scale(scale, scale);
                 ctx.drawImage(img, 0, 0);
-                drawFaces(ctx, img, faces, scale);
+                drawFaces(ctx, img, faces, scale, false); // isExport = false
                 ctx.restore();
             }, [images, curId, selId, showOutlines, offset, scale]);
 
@@ -249,7 +253,7 @@
                 return () => cancelAnimationFrame(id);
             }, [draw]);
 
-            // Interaction Helpers
+            // Interaction
             const getPos = (e) => {
                 const r = canvasRef.current.getBoundingClientRect();
                 return { x: (e.clientX - r.left - offset.x)/scale, y: (e.clientY - r.top - offset.y)/scale };
@@ -274,7 +278,6 @@
                     interactionRef.current.targetId = hit.id;
                     interactionRef.current.posStart = p;
                 } else {
-                    // หากคลิกที่พื้นที่ว่าง เริ่มโหมด PAN เพื่อเลื่อนภาพ
                     interactionRef.current.mode = 'PAN';
                     interactionRef.current.offsetStart = { ...offset };
                 }
@@ -284,17 +287,13 @@
                 const ir = interactionRef.current;
                 const dx = e.clientX - ir.start.x;
                 const dy = e.clientY - ir.start.y;
-
-                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-                    ir.hasMoved = true;
-                }
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) ir.hasMoved = true;
 
                 if(ir.mode === 'DRAG') {
                     const r = canvasRef.current.getBoundingClientRect();
                     const p = { x: (e.clientX - r.left - offset.x)/scale, y: (e.clientY - r.top - offset.y)/scale };
                     const deltaX = p.x - ir.posStart.x;
                     const deltaY = p.y - ir.posStart.y;
-                    
                     setImages(prev => prev.map(img => img.id === curId ? { 
                         ...img, 
                         faces: img.faces.map(f => f.id === ir.targetId ? {
@@ -308,7 +307,6 @@
 
             const onMouseUp = (e) => {
                 const ir = interactionRef.current;
-                // ถ้าเป็นการคลิกพื้นที่ว่างสั้นๆ (ไม่ได้ลาก) ให้ทำการเพิ่มจุดเบลอ
                 if (ir.mode === 'PAN' && !ir.hasMoved && e.button === 0) {
                     const p = getPos(e);
                     saveToHistory();
@@ -320,7 +318,47 @@
                 ir.mode = 'IDLE';
             };
 
-            // Keyboard
+            const saveImage = async () => {
+                const img = imgRef.current; if(!img) return;
+                const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+                const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
+                drawFaces(ctx, img, getFaces(), 1, true); // isExport = true (Remove outlines)
+                const a = document.createElement('a'); 
+                a.download = `Blurred_${Date.now()}.jpg`; 
+                a.href = cv.toDataURL('image/jpeg', 1.0); a.click();
+            };
+
+            const saveZip = async () => {
+                if (images.length === 0) return;
+                setIsZipping(true);
+                try {
+                    const zip = new JSZip();
+                    for (const imgData of images) {
+                        const blob = await new Promise(res => {
+                            const tempImg = new Image();
+                            tempImg.crossOrigin = "anonymous";
+                            tempImg.src = imgData.url;
+                            tempImg.onload = () => {
+                                const cv = document.createElement('canvas');
+                                cv.width = tempImg.naturalWidth;
+                                cv.height = tempImg.naturalHeight;
+                                const ctx = cv.getContext('2d');
+                                ctx.drawImage(tempImg, 0, 0);
+                                drawFaces(ctx, tempImg, imgData.faces, 1, true);
+                                cv.toBlob(blob => res(blob), 'image/jpeg', 0.95);
+                            };
+                        });
+                        zip.file(`blurred_${imgData.id}.jpg`, blob);
+                    }
+                    const content = await zip.generateAsync({ type: "blob" });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(content);
+                    a.download = "Batch_FaceBlur.zip";
+                    a.click();
+                } catch(e) { console.error("Zip error", e); }
+                setIsZipping(false);
+            };
+
             useEffect(() => {
                 const h = (e) => {
                     if ((e.key === 'Delete' || e.key === 'Backspace') && selId) {
@@ -334,47 +372,36 @@
                 return () => window.removeEventListener('keydown', h);
             }, [selId, curId, handleUndo]);
 
-            const updateSel = (key, val) => {
-                setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: img.faces.map(f => f.id === selId ? (key === 'w' ? { ...f, w: val, h: val, x: (f.x + f.w/2) - val/2, y: (f.y + f.h/2) - val/2 } : { ...f, [key]: val }) : f) } : img));
-            };
-
-            const updateGlobal = (key, val) => {
-                if(key === 'blur') setDefBlur(val);
-                if(key === 'soft') setDefSoft(val);
-                setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: img.faces.map(f => ({ ...f, [key]: val })) } : img));
-            };
-
-            const saveImage = () => {
-                const img = imgRef.current; if(!img) return;
-                const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-                const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
-                drawFaces(ctx, img, getFaces(), 1); 
-                const a = document.createElement('a'); a.download = 'Blurred_Export.jpg'; a.href = cv.toDataURL('image/jpeg', 1.0); a.click();
-            };
-
             const selFace = getFaces().find(f => f.id === selId);
 
             return (
                 <div className="flex h-full font-sans text-gray-100 overflow-hidden">
-                    {/* Sidebar */}
                     <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col z-20 shadow-2xl">
                         <div className="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
                             <h1 className="font-bold text-xl text-blue-400 italic">108 FACE BLUR</h1>
                             <div className={`w-2.5 h-2.5 rounded-full ${aiStatus==='ready'?'bg-green-500 shadow-[0_0_8px_#22c55e]':'bg-yellow-500 animate-pulse'}`}></div>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto p-5 space-y-6">
-                            <div className="flex gap-2">
-                                <button onClick={()=>fileRef.current.click()} className="btn flex-1 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-bold flex items-center justify-center gap-2 text-white shadow-lg text-sm">
-                                    <Icon p={IconsData.Upload}/> อัปโหลด
-                                </button>
-                                <button onClick={handleUndo} disabled={history.length === 0} className="btn w-14 bg-slate-700 hover:bg-slate-600 rounded-2xl flex items-center justify-center disabled:opacity-30" title="ย้อนกลับ (Ctrl+Z)">
-                                    <Icon p={IconsData.Undo}/>
-                                </button>
+                        <div className="flex-1 overflow-y-auto p-5 space-y-6 no-scrollbar">
+                            <div className="flex flex-col gap-2">
+                                <div className="flex gap-2">
+                                    <button onClick={()=>fileRef.current.click()} className="btn flex-1 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-bold flex items-center justify-center gap-2 text-white shadow-lg text-sm">
+                                        <Icon p={IconsData.Upload}/> อัปโหลด
+                                    </button>
+                                    <button onClick={handleUndo} disabled={history.length === 0} className="btn w-14 bg-slate-700 hover:bg-slate-600 rounded-2xl flex items-center justify-center disabled:opacity-30" title="ย้อนกลับ (Ctrl+Z)">
+                                        <Icon p={IconsData.Undo}/>
+                                    </button>
+                                </div>
+                                {images.length > 1 && (
+                                    <button onClick={saveZip} disabled={isZipping} className="btn w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-bold flex items-center justify-center gap-2 text-white shadow-lg text-xs uppercase tracking-wider">
+                                        {isZipping ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Icon p={IconsData.Zip}/>}
+                                        บันทึกทุกรูป (ZIP)
+                                    </button>
+                                )}
                             </div>
 
                             {images.length > 0 && (
-                                <div className="flex gap-2 overflow-x-auto py-1 no-scrollbar">
+                                <div className="flex gap-2 overflow-x-auto py-1 no-scrollbar border-t border-slate-700/30 pt-3">
                                     {images.map(img => (
                                         <div key={img.id} onClick={()=>setCurId(img.id)} className={`relative flex-none w-12 h-12 rounded-xl border-2 cursor-pointer transition-all ${curId===img.id?'border-blue-500 scale-105 shadow-lg':'border-transparent opacity-40'}`}>
                                             <img src={img.url} className="w-full h-full object-cover rounded-lg"/>
@@ -389,18 +416,18 @@
                                 <div className="bg-slate-900/50 border border-blue-500/30 p-5 rounded-[2rem] space-y-5 animate-in fade-in slide-in-from-left-4">
                                     <div className="flex justify-between items-center border-b border-white/5 pb-3">
                                         <span className="text-blue-400 font-bold uppercase text-[10px] tracking-widest">Adjust Point</span>
-                                        <button onClick={()=>{saveToHistory(); setImages(prev=>prev.map(img=>img.id===curId?{...img, faces:img.faces.filter(f=>f.id!==selId)}:img)); setSelId(null);}} className="text-red-400 hover:bg-red-400/20 p-2 rounded-full transition-all group" title="ลบจุดนี้">
+                                        <button onClick={()=>{saveToHistory(); setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.filter(f=>f.id!==selId)}:img)); setSelId(null);}} className="text-red-400 hover:bg-red-400/10 p-2 rounded-full transition-all group" title="ลบจุดนี้">
                                             <Icon p={IconsData.Trash} className="group-hover:scale-110"/>
                                         </button>
                                     </div>
                                     <div className="space-y-4">
-                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>ขนาด</span><span className="text-white">{selFace.w.toFixed(0)}px</span></div><input type="range" min="10" max="2000" value={selFace.w} onChange={e=>{saveToHistory(); updateSel('w', Number(e.target.value))}} className="w-full"/></div>
-                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>ความเบลอ</span><span className="text-white">{selFace.blur}%</span></div><input type="range" min="0" max="100" value={selFace.blur} onChange={e=>updateSel('blur', Number(e.target.value))} className="w-full"/></div>
-                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>ความฟุ้งขอบ</span><span className="text-white">{selFace.soft}%</span></div><input type="range" min="0" max="300" value={selFace.soft} onChange={e=>updateSel('soft', Number(e.target.value))} className="w-full"/></div>
+                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>ขนาด</span><span className="text-white">{selFace.w.toFixed(0)}px</span></div><input type="range" min="10" max="2000" value={selFace.w} onChange={e=>{saveToHistory(); setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>f.id===selId?{...f, w:Number(e.target.value), h:Number(e.target.value), x:(f.x+f.w/2)-Number(e.target.value)/2, y:(f.y+f.h/2)-Number(e.target.value)/2}:f)}:img))}} className="w-full"/></div>
+                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>เบลอ</span><span className="text-white">{selFace.blur}%</span></div><input type="range" min="0" max="100" value={selFace.blur} onChange={e=>setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>f.id===selId?{...f, blur:Number(e.target.value)}:f)}:img))} className="w-full"/></div>
+                                        <div><div className="flex justify-between text-xs mb-2 text-slate-400"><span>ฟุ้ง</span><span className="text-white">{selFace.soft}%</span></div><input type="range" min="0" max="300" value={selFace.soft} onChange={e=>setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>f.id===selId?{...f, soft:Number(e.target.value)}:f)}:img))} className="w-full"/></div>
                                     </div>
                                     <div className="flex gap-2">
-                                        <button onClick={()=>updateSel('shape','circle')} className={`flex-1 py-2.5 rounded-xl text-xs border transition-all ${selFace.shape==='circle'?'bg-blue-600 border-blue-500 font-bold':'border-slate-600 text-slate-400'}`}>วงกลม</button>
-                                        <button onClick={()=>updateSel('shape','square')} className={`flex-1 py-2.5 rounded-xl text-xs border transition-all ${selFace.shape==='square'?'bg-blue-600 border-blue-500 font-bold':'border-slate-600 text-slate-400'}`}>สี่เหลี่ยม</button>
+                                        <button onClick={()=>setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>f.id===selId?{...f, shape:'circle'}:f)}:img))} className={`flex-1 py-2.5 rounded-xl text-xs border transition-all ${selFace.shape==='circle'?'bg-blue-600 border-blue-500 font-bold':'border-slate-600 text-slate-400'}`}>วงกลม</button>
+                                        <button onClick={()=>setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>f.id===selId?{...f, shape:'square'}:f)}:img))} className={`flex-1 py-2.5 rounded-xl text-xs border transition-all ${selFace.shape==='square'?'bg-blue-600 border-blue-500 font-bold':'border-slate-600 text-slate-400'}`}>สี่เหลี่ยม</button>
                                     </div>
                                     <button onClick={()=>setSelId(null)} className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-2xl text-sm font-bold mt-2">เสร็จสิ้น</button>
                                 </div>
@@ -408,8 +435,8 @@
                                 <div className="space-y-6">
                                     <div className="space-y-4 px-1">
                                         <div className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-2">Global Settings</div>
-                                        <div><div className="flex justify-between text-xs mb-2 px-1 text-slate-400"><span>เบลอพื้นฐาน</span><span>{defBlur}</span></div><input type="range" min="0" max="100" value={defBlur} onChange={e=>updateGlobal('blur', Number(e.target.value))} className="w-full"/></div>
-                                        <div><div className="flex justify-between text-xs mb-2 px-1 text-slate-400"><span>ฟุ้งขอบพื้นฐาน</span><span>{defSoft}</span></div><input type="range" min="0" max="200" value={defSoft} onChange={e=>updateGlobal('soft', Number(e.target.value))} className="w-full"/></div>
+                                        <div><div className="flex justify-between text-xs mb-2 px-1 text-slate-400"><span>เบลอพื้นฐาน</span><span>{defBlur}</span></div><input type="range" min="0" max="100" value={defBlur} onChange={e=>{setDefBlur(Number(e.target.value)); setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>({...f, blur:Number(e.target.value)}))}:img))}} className="w-full"/></div>
+                                        <div><div className="flex justify-between text-xs mb-2 px-1 text-slate-400"><span>ฟุ้งขอบพื้นฐาน</span><span>{defSoft}</span></div><input type="range" min="0" max="200" value={defSoft} onChange={e=>{setDefSoft(Number(e.target.value)); setImages(p=>p.map(img=>img.id===curId?{...img, faces:img.faces.map(f=>({...f, soft:Number(e.target.value)}))}:img))}} className="w-full"/></div>
                                     </div>
                                     <div className="pt-4 border-t border-slate-700/50 space-y-2">
                                         <button onClick={()=>{if(imgRef.current) detectFaces(imgRef.current, curId)}} disabled={isProcessing || aiStatus !== 'ready'} className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 rounded-2xl flex justify-center items-center gap-2 text-sm font-bold transition-all disabled:opacity-30 shadow-inner">
@@ -426,13 +453,12 @@
                         {curId && (
                             <div className="p-5 border-t border-slate-700 bg-slate-900/20 backdrop-blur-xl">
                                 <button onClick={saveImage} className="w-full py-4.5 bg-green-600 hover:bg-green-500 rounded-2xl font-bold shadow-[0_10px_30px_rgba(22,163,74,0.3)] flex justify-center items-center gap-3 btn text-white text-lg transition-all active:scale-95">
-                                    <Icon p={IconsData.Save}/> บันทึกรูปภาพ
+                                    <Icon p={IconsData.Save}/> บันทึกรูปนี้
                                 </button>
                             </div>
                         )}
                     </div>
 
-                    {/* Canvas Container */}
                     <div className="flex-1 bg-slate-950 canvas-container flex items-center justify-center relative overflow-hidden" 
                          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} 
                          onWheel={(e)=>setScale(s=>Math.max(0.05, Math.min(10, s*(1-e.deltaY*0.001))))}>
@@ -443,13 +469,11 @@
                                     <Icon p={IconsData.Upload} className="w-12 h-12 text-slate-500 group-hover:text-white transition-colors"/>
                                 </div>
                                 <h2 className="text-3xl font-black text-slate-200 tracking-tight">108 FACE BLUR</h2>
-                                <p className="text-slate-500 mt-4 text-sm font-medium tracking-wide font-mono tracking-tighter uppercase italic">Professional PC Edition v15</p>
+                                <p className="text-slate-500 mt-4 text-sm font-medium tracking-wide italic uppercase font-mono tracking-tighter">Professional v16.1 (Stable Export)</p>
                             </div>
                         ) : (
                             <div className="relative" style={{width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>
                                 <canvas ref={canvasRef} className="shadow-[0_20px_80px_rgba(0,0,0,1)] cursor-move border border-white/5 rounded-lg"/>
-                                
-                                {/* Floating Zoom UI - FIXED: Added onMouseDown stop propagation */}
                                 <div className="absolute bottom-8 right-8 flex flex-col gap-4" onMouseDown={(e)=>e.stopPropagation()}>
                                     <button onClick={(e)=>{setScale(s=>Math.min(s*1.3, 10));}} className="w-14 h-14 bg-slate-800/90 backdrop-blur-2xl rounded-3xl text-white shadow-2xl border border-white/10 hover:bg-blue-600 hover:scale-110 transition-all flex items-center justify-center group" title="ซูมเข้า"><Icon p={IconsData.ZoomIn} className="group-hover:scale-125 transition-transform"/></button>
                                     <button onClick={(e)=>{setScale(s=>Math.max(s/1.3, 0.05));}} className="w-14 h-14 bg-slate-800/90 backdrop-blur-2xl rounded-3xl text-white shadow-2xl border border-white/10 hover:bg-blue-600 hover:scale-110 transition-all flex items-center justify-center group" title="ซูมออก"><Icon p={IconsData.ZoomOut} className="group-hover:scale-125 transition-transform"/></button>
@@ -461,7 +485,7 @@
                             <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-10 duration-500">
                                 <div className="bg-slate-800/90 backdrop-blur border border-blue-500/50 px-8 py-4 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-5 text-white">
                                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                    <span className="font-bold text-sm">AI กำลังวิเคราะห์ใบหน้า...</span>
+                                    <span className="font-bold text-sm">AI สแกนหน้า...</span>
                                 </div>
                             </div>
                         )}
@@ -469,7 +493,7 @@
                             const files = Array.from(e.target.files);
                             files.forEach(f => {
                                 const r = new FileReader(); r.onload=(ev)=>{
-                                    const i=new Image(); i.onload=()=>setImages(p=>[...p, {id:Math.random().toString(), url:ev.target.result, faces:[], processed:false}]);
+                                    const i=new Image(); i.onload=()=>setImages(p=>[...p, {id:Date.now() + Math.random().toString(), url:ev.target.result, faces:[], processed:false}]);
                                     i.src=ev.target.result;
                                 }; r.readAsDataURL(f);
                             });
