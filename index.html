@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>108 Face Blur (Speed Edition)</title>
+    <title>108 Face Blur (Fixed Resizing)</title>
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -11,27 +11,16 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <style>
-        body { 
-            background-color: #0f172a; 
-            color: #f1f5f9; 
-            height: 100vh; 
-            width: 100vw; 
-            overflow: hidden; 
-            user-select: none; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .canvas-container {
+        body { background-color: #0f172a; color: #f1f5f9; height: 100vh; overflow: hidden; user-select: none; font-family: 'Segoe UI', sans-serif; }
+        .canvas-bg {
             background-color: #1e293b;
             background-image: radial-gradient(#334155 1px, transparent 1px);
             background-size: 20px 20px;
         }
         input[type=range] { accent-color: #3b82f6; cursor: pointer; }
-        .btn { transition: all 0.2s; } 
-        .btn:active { transform: scale(0.95); }
+        .btn { transition: all 0.2s; } .btn:active { transform: scale(0.95); }
         .spinner { animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -44,77 +33,45 @@
         const { useState, useEffect, useRef, useCallback } = React;
         const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
 
-        // --- Icons ---
-        const Icon = ({ p, className="" }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{p}</svg>
-        );
         const IconsData = {
-            Image: <><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></>,
             Upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
             Save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
             Trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
             Refresh: <><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>,
             Eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
             EyeOff: <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>,
-            Plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
-            Settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
-            Zip: <><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M10 12h4"/><rect width="20" height="5" x="2" y="3" rx="1"/></>,
-            ArrowLeft: <><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></>,
             ZoomIn: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></>,
-            ZoomOut: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>,
-            Check: <><polyline points="20 6 9 17 4 12"/></>,
-            ChevronUp: <><polyline points="18 15 12 9 6 15"/></>,
-            ChevronDown: <><polyline points="6 9 12 15 18 9"/></>
+            ZoomOut: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></>
         };
 
+        const Icon = ({ p, className="" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{p}</svg>
+        );
+
         const App = () => {
-            // --- State ---
             const [images, setImages] = useState([]);
             const [curId, setCurId] = useState(null);
-            
             const [selId, setSelId] = useState(null);
             const [aiStatus, setAiStatus] = useState("init");
             const [isProcessing, setIsProcessing] = useState(false);
-            const [zipping, setZipping] = useState(false);
             const [showOutlines, setShowOutlines] = useState(true);
 
-            // Settings
-            const [defBlur, setDefBlur] = useState(7);
-            const [defSoft, setDefSoft] = useState(19);
+            const [defBlur, setDefBlur] = useState(20);
+            const [defSoft, setDefSoft] = useState(40);
             const [defShape, setDefShape] = useState('circle');
 
-            // Viewport
             const [scale, setScale] = useState(1);
             const [offset, setOffset] = useState({ x: 0, y: 0 });
             
-            // Interaction
-            const [isDragging, setIsDragging] = useState(false);
-            const [dragOffset, setDragOffset] = useState({x:0, y:0});
-
-            // Refs
             const canvasRef = useRef(null);
             const imgRef = useRef(null);
             const fileRef = useRef(null);
-            const interactionRef = useRef({ 
-                mode: 'IDLE', // IDLE, DRAG, PAN
-                start: {x:0, y:0}, 
-                offsetStart: {x:0, y:0},
-                pinchDist: 0,
-                startScale: 1
-            });
+            const interactionRef = useRef({ mode: 'IDLE', start: {x:0, y:0}, offsetStart: {x:0, y:0}, targetId: null, faceStart: {x:0, y:0} });
 
-            // Helper
             const getCurImg = () => images.find(i => i.id === curId);
-            const setFaces = (newFaces) => {
-                if(!curId) return;
-                setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: newFaces } : img));
-            };
-            const getFaces = () => {
-                const img = images.find(i => i.id === curId);
-                return img ? (img.faces || []) : [];
-            };
+            const getFaces = () => getCurImg() ? (getCurImg().faces || []) : [];
 
-            // 1. Init AI - Use TinyFaceDetector for Speed
+            // 1. Init AI (Tiny Detector for EXE Stability)
             useEffect(() => {
                 const init = async () => {
                     setAiStatus("loading");
@@ -122,9 +79,8 @@
                         if(window.faceapi) {
                             await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
                             setAiStatus("ready");
-                            console.log("AI Loaded: TinyFaceDetector");
                         }
-                    } catch(e) { console.error(e); setAiStatus("error"); }
+                    } catch(e) { console.error("AI Load Error:", e); setAiStatus("error"); }
                 };
                 init();
             }, []);
@@ -138,304 +94,211 @@
                 img.src = imgData.url;
                 img.onload = () => {
                     imgRef.current = img;
-                    // Fit Screen
-                    if(canvasRef.current) {
-                        const wrapper = canvasRef.current.parentElement;
-                        const cw = wrapper.clientWidth;
-                        const ch = wrapper.clientHeight;
+                    const cv = canvasRef.current;
+                    if(cv) {
+                        const cw = cv.parentElement.clientWidth;
+                        const ch = cv.parentElement.clientHeight;
                         const fitScale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight) * 0.95;
                         setScale(fitScale);
                         setOffset({ x: (cw - img.naturalWidth * fitScale) / 2, y: (ch - img.naturalHeight * fitScale) / 2 });
                     }
                     setSelId(null);
-                    // Run AI if not processed
                     if(!imgData.processed && aiStatus === "ready") detectFaces(img, imgData.id);
                 };
             }, [curId, aiStatus]);
 
-            // 3. Fast AI Detection
+            // 3. Fast Detection
             const detectFaces = async (img, targetId) => {
                 setIsProcessing(true);
                 try {
-                    // Create small canvas for detection (Max 640px)
                     const detCanvas = document.createElement('canvas');
-                    const maxDim = 640; 
+                    const maxDim = 512; 
                     const s = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
                     detCanvas.width = img.naturalWidth * s;
                     detCanvas.height = img.naturalHeight * s;
                     detCanvas.getContext('2d').drawImage(img, 0, 0, detCanvas.width, detCanvas.height);
 
-                    // Detect with Tiny (Fast)
-                    const dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 640, scoreThreshold: 0.3 }));
+                    const dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }));
 
                     const newFaces = dets.map((d, i) => {
                         const b = d.box;
                         const rs = 1/s;
-                        // Add padding
-                        const padX = b.width * 0.15;
-                        const padY = b.height * 0.2;
+                        const fw = b.width * rs * 1.3;
+                        const fh = b.height * rs * 1.4;
                         return {
                             id: Date.now() + i,
-                            x: (b.x * rs) - padX/2,
-                            y: (b.y * rs) - padY/2,
-                            w: (b.width * rs) + padX,
-                            h: (b.height * rs) + padY * 1.5,
+                            x: (b.x * rs) + (b.width * rs / 2) - (fw / 2),
+                            y: (b.y * rs) + (b.height * rs / 2) - (fh / 2),
+                            w: fw,
+                            h: fh,
                             blur: defBlur, soft: defSoft, shape: defShape
                         };
                     });
-                    
                     setImages(prev => prev.map(item => item.id === targetId ? { ...item, faces: newFaces, processed: true } : item));
-                } catch(e) { console.error("AI Error:", e); }
+                } catch(e) { console.error("Detection Error:", e); }
                 setIsProcessing(false);
             };
 
-            // 4. Drawing Logic
             const draw = useCallback(() => {
                 const cv = canvasRef.current;
                 const img = imgRef.current;
                 const faces = getFaces();
                 if(!cv || !img) return;
 
-                // Set canvas to parent size
                 const parent = cv.parentElement;
                 if(cv.width !== parent.clientWidth || cv.height !== parent.clientHeight) {
-                    cv.width = parent.clientWidth;
-                    cv.height = parent.clientHeight;
+                    cv.width = parent.clientWidth; cv.height = parent.clientHeight;
                 }
 
                 const ctx = cv.getContext('2d');
                 ctx.clearRect(0, 0, cv.width, cv.height);
-
                 ctx.save();
                 ctx.translate(offset.x, offset.y);
                 ctx.scale(scale, scale);
                 ctx.drawImage(img, 0, 0);
 
                 faces.forEach(f => {
-                    const cx = f.x + f.w/2;
-                    const cy = f.y + f.h/2;
-                    const r = Math.max(f.w, f.h)/2;
+                    const cx = f.x + f.w/2, cy = f.y + f.h/2, r = Math.max(f.w, f.h)/2;
                     const isSel = f.id === selId;
-                    
-                    const useSoft = f.soft > 0 && !(isDragging && isSel);
 
-                    if(useSoft) {
+                    if(f.soft > 0) {
                         const pad = Math.max(f.soft, f.blur) * 2;
-                        const fx = Math.floor(f.x - pad), fy = Math.floor(f.y - pad);
-                        const fw = Math.floor(f.w + pad * 2), fh = Math.floor(f.h + pad * 2);
+                        const fx = Math.floor(f.x-pad), fy = Math.floor(f.y-pad);
+                        const fw = Math.floor(f.w+pad*2), fh = Math.floor(f.h+pad*2);
                         const off = document.createElement('canvas'); off.width = fw; off.height = fh;
-                        const oCtx = off.getContext('2d');
-                        oCtx.translate(-fx, -fy); oCtx.filter = `blur(${f.blur}px)`; oCtx.drawImage(img, 0, 0); oCtx.setTransform(1,0,0,1,0,0);
-                        oCtx.globalCompositeOperation = 'destination-in';
-                        oCtx.beginPath();
+                        const o = off.getContext('2d');
+                        o.translate(-fx, -fy); o.filter = `blur(${f.blur}px)`; o.drawImage(img, 0, 0); o.setTransform(1,0,0,1,0,0);
+                        o.globalCompositeOperation = 'destination-in';
+                        o.beginPath();
                         if(f.shape === 'circle') {
-                            const grad = oCtx.createRadialGradient(fw/2, fh/2, Math.max(0, r - f.soft/2), fw/2, fh/2, r + f.soft/2);
-                            grad.addColorStop(0, 'rgba(0,0,0,1)'); grad.addColorStop(1, 'rgba(0,0,0,0)'); oCtx.fillStyle = grad; oCtx.arc(fw/2, fh/2, r + f.soft, 0, 2*Math.PI); oCtx.fill();
+                            const g = o.createRadialGradient(fw/2, fh/2, Math.max(0, r - f.soft/2), fw/2, fh/2, r + f.soft/2);
+                            g.addColorStop(0, '#000'); g.addColorStop(1, 'transparent'); o.fillStyle = g; o.arc(fw/2, fh/2, r + f.soft, 0, 2*Math.PI);
                         } else {
-                            oCtx.fillStyle = 'black'; oCtx.filter = `blur(${f.soft/2}px)`; 
-                            oCtx.rect((f.x-fx) + f.soft/4, (f.y-fy) + f.soft/4, f.w - f.soft/2, f.h - f.soft/2);
-                            oCtx.fill();
+                            o.fillStyle = 'black'; o.filter = `blur(${f.soft/2}px)`; o.rect((f.x-fx) + f.soft/4, (f.y-fy) + f.soft/4, f.w - f.soft/2, f.h - f.soft/2);
                         }
-                        ctx.drawImage(off, fx, fy);
+                        o.fill(); ctx.drawImage(off, fx, fy);
                     } else {
                         ctx.save(); ctx.beginPath();
                         if(f.shape === 'circle') ctx.arc(cx, cy, r, 0, 2*Math.PI); else ctx.rect(f.x, f.y, f.w, f.h);
-                        ctx.clip();
-                        if(ctx.filter !== undefined) ctx.filter = `blur(${f.blur}px)`; else ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                        ctx.drawImage(img, 0, 0); ctx.restore();
+                        ctx.clip(); ctx.filter = `blur(${f.blur}px)`; ctx.drawImage(img, 0, 0); ctx.restore();
                     }
 
                     if(showOutlines || isSel) {
-                        const lw = Math.max(2, 2/scale);
-                        ctx.lineWidth = isSel ? lw*1.5 : lw;
-                        ctx.strokeStyle = isSel ? '#3b82f6' : 'rgba(255,255,255,0.7)';
-                        ctx.setLineDash(isSel ? [] : [lw*2, lw]);
-                        ctx.beginPath();
-                        if(f.shape==='circle') ctx.arc(cx, cy, r, 0, 2*Math.PI); else ctx.rect(f.x, f.y, f.w, f.h);
-                        ctx.stroke();
-                        if(isSel) { ctx.fillStyle='#3b82f6'; ctx.beginPath(); ctx.arc(f.x+f.w, f.y+f.h, lw*4, 0, 2*Math.PI); ctx.fill(); }
+                        const lw = 2/scale; ctx.lineWidth = isSel ? lw*2 : lw; ctx.strokeStyle = isSel ? '#3b82f6' : 'rgba(255,255,255,0.6)';
+                        ctx.setLineDash(isSel ? [] : [lw*3, lw*2]); ctx.beginPath();
+                        if(f.shape==='circle') ctx.arc(cx, cy, r, 0, 2*Math.PI); else ctx.rect(f.x, f.y, f.w, f.h); ctx.stroke();
+                        if(isSel) { ctx.fillStyle='#3b82f6'; ctx.beginPath(); ctx.arc(f.x+f.w, f.y+f.h, lw*5, 0, 2*Math.PI); ctx.fill(); }
                     }
                 });
                 ctx.restore();
-            }, [images, curId, selId, showOutlines, offset, scale, isDragging]);
+            }, [images, curId, selId, showOutlines, offset, scale]);
 
-            useEffect(() => {
-                let id = requestAnimationFrame(draw);
-                return () => cancelAnimationFrame(id);
-            }, [draw]);
+            useEffect(() => { let id = requestAnimationFrame(draw); return () => cancelAnimationFrame(id); }, [draw]);
 
-            // --- Interaction ---
+            // Interaction
             const getPos = (e) => {
-                const rect = canvasRef.current.getBoundingClientRect();
-                return {
-                    x: (e.clientX - rect.left - offset.x) / scale,
-                    y: (e.clientY - rect.top - offset.y) / scale
-                };
+                const r = canvasRef.current.getBoundingClientRect();
+                return { x: (e.clientX - r.left - offset.x)/scale, y: (e.clientY - r.top - offset.y)/scale };
             };
 
             const onMouseDown = (e) => {
-                const p = getPos(e);
-                const faces = getFaces();
+                if(!imgRef.current) return;
+                const p = getPos(e); const faces = getFaces();
                 const hit = [...faces].reverse().find(f => {
                     if(f.shape==='circle') return Math.hypot(p.x-(f.x+f.w/2), p.y-(f.y+f.h/2)) <= Math.max(f.w,f.h)/2;
-                    return p.x >= f.x && p.x <= f.x+f.w && p.y >= f.y && p.y <= f.y+f.h;
+                    return p.x>=f.x && p.x<=f.x+f.w && p.y>=f.y && p.y<=f.y+f.h;
                 });
-
                 if(hit) {
-                    setSelId(hit.id);
-                    setIsDragging(true);
-                    setDragOffset({ x: p.x - hit.x, y: p.y - hit.y });
-                    interactionRef.current = { mode: 'DRAG', start: p, faceStart: {x: hit.x, y: hit.y}, targetId: hit.id };
+                    setSelId(hit.id); interactionRef.current = { mode: 'DRAG', start: p, faceStart: {x: hit.x, y: hit.y}, targetId: hit.id };
                 } else {
-                    if(e.button === 0 && !e.shiftKey) { // Add
-                        const size = Math.min(imgRef.current.naturalWidth, imgRef.current.naturalHeight) * 0.15;
-                        const newFace = {
-                             id: Date.now(), x: p.x-size/2, y: p.y-size/2, w: size, h: size,
-                             blur: defBlur, soft: defSoft, shape: defShape
-                        };
-                        setFaces([...faces, newFace]);
-                        setSelId(newFace.id);
-                        setIsDragging(true);
-                        setDragOffset({ x: size/2, y: size/2 });
-                        interactionRef.current = { mode: 'DRAG', start: p, faceStart: {x: newFace.x, y: newFace.y}, targetId: newFace.id };
-                    } else { // Pan
-                        interactionRef.current = { mode: 'PAN', start: {x: e.clientX, y: e.clientY}, offsetStart: {...offset} };
-                    }
+                    if(e.button === 0 && !e.shiftKey) {
+                        const s = Math.min(imgRef.current.naturalWidth, imgRef.current.naturalHeight) * 0.15;
+                        const nf = { id: Date.now(), x: p.x-s/2, y: p.y-s/2, w: s, h: s, blur: defBlur, soft: defSoft, shape: defShape };
+                        setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: [...img.faces, nf] } : img));
+                        setSelId(nf.id); interactionRef.current = { mode: 'DRAG', start: p, faceStart: {x: nf.x, y: nf.y}, targetId: nf.id };
+                    } else { interactionRef.current = { mode: 'PAN', start: {x: e.clientX, y: e.clientY}, offsetStart: {...offset} }; }
                 }
             };
 
             const onMouseMove = (e) => {
                 const { mode, start, faceStart, offsetStart, targetId } = interactionRef.current;
                 if(mode === 'DRAG') {
-                    const p = getPos(e);
-                    const dx = p.x - start.x;
-                    const dy = p.y - start.y;
-                    setFaces(getFaces().map(f => f.id === targetId ? { ...f, x: faceStart.x + dx, y: faceStart.y + dy } : f));
+                    const p = getPos(e); const dx = p.x - start.x, dy = p.y - start.y;
+                    setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: img.faces.map(f => f.id === targetId ? {...f, x: faceStart.x + dx, y: faceStart.y + dy} : f) } : img));
                 } else if(mode === 'PAN') {
-                    const dx = e.clientX - start.x;
-                    const dy = e.clientY - start.y;
+                    const dx = e.clientX - start.x, dy = e.clientY - start.y;
                     setOffset({ x: offsetStart.x + dx, y: offsetStart.y + dy });
                 }
             };
 
-            const onMouseUp = () => {
-                interactionRef.current.mode = 'IDLE';
-                setIsDragging(false);
-            };
-
-            const onWheel = (e) => {
-                const s = Math.max(0.05, Math.min(10, scale * (1 - e.deltaY * 0.001)));
-                const rect = canvasRef.current.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
-                setOffset({ x: mx - (mx - offset.x) * (s/scale), y: my - (my - offset.y) * (s/scale) });
-                setScale(s);
-            };
-
-            // Actions
-            const handleFile = async (e) => {
-                const files = Array.from(e.target.files);
-                if(!files.length) return;
-                const newImgs = await Promise.all(files.map(f => new Promise(res => {
-                    const r = new FileReader();
-                    r.onload = (ev) => {
-                        const i = new Image(); i.onload = () => res({ id: Math.random().toString(36).substr(2,9), url: ev.target.result, name: f.name, w: i.naturalWidth, h: i.naturalHeight, faces: [], processed: false });
-                        i.src = ev.target.result;
+            // Fixed Resize Logic: Keep Center Point
+            const handleResize = (newSize) => {
+                if(!selId) return;
+                setImages(prev => prev.map(img => {
+                    if(img.id !== curId) return img;
+                    return {
+                        ...img,
+                        faces: img.faces.map(f => {
+                            if(f.id !== selId) return f;
+                            const cx = f.x + f.w/2;
+                            const cy = f.y + f.h/2;
+                            return { ...f, w: newSize, h: newSize, x: cx - newSize/2, y: cy - newSize/2 };
+                        })
                     };
-                    r.readAsDataURL(f);
-                })));
-                setImages(p => [...p, ...newImgs]);
-                if(!curId && newImgs.length) setCurId(newImgs[0].id);
-                e.target.value = "";
+                }));
             };
 
+            const updateSel = (k, v) => setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: img.faces.map(f => f.id === selId ? {...f, [k]:v} : f) } : img));
             const updateGlobal = (k, v) => {
-                if(k==='blur') setDefBlur(v); if(k==='soft') setDefSoft(v); if(k==='shape') setDefShape(v);
-                const faces = getFaces();
-                if(faces.length) setFaces(faces.map(f => ({...f, [k]: v})));
+                if(k==='blur') setDefBlur(v); if(k==='soft') setDefSoft(v);
+                setImages(prev => prev.map(img => img.id === curId ? { ...img, faces: img.faces.map(f => ({...f, [k]:v})) } : img));
             };
-
-            const updateSel = (k, v) => setFaces(getFaces().map(f => f.id === selId ? {...f, [k]: v} : f));
-            const deleteSel = () => { if(selId) { setFaces(getFaces().filter(f => f.id !== selId)); setSelId(null); } };
 
             const saveImage = () => {
-                const cv = document.createElement('canvas');
-                cv.width = imgRef.current.naturalWidth; cv.height = imgRef.current.naturalHeight;
-                const ctx = cv.getContext('2d');
-                ctx.drawImage(imgRef.current, 0, 0);
+                const cv = document.createElement('canvas'); const img = imgRef.current;
+                cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+                const x = cv.getContext('2d'); x.drawImage(img, 0, 0);
                 getFaces().forEach(f => {
                     const cx = f.x+f.w/2, cy = f.y+f.h/2, r = Math.max(f.w, f.h)/2;
                     if(f.soft > 0) {
-                        const pad = Math.max(f.soft, f.blur) * 2;
-                        const fw=Math.floor(f.w+pad*2), fh=Math.floor(f.h+pad*2);
-                        const off = document.createElement('canvas'); off.width=fw; off.height=fh;
-                        const oCtx = off.getContext('2d');
-                        oCtx.translate(-(Math.floor(f.x-pad)), -(Math.floor(f.y-pad))); oCtx.filter=`blur(${f.blur}px)`; oCtx.drawImage(imgRef.current,0,0); oCtx.setTransform(1,0,0,1,0,0);
-                        oCtx.globalCompositeOperation='destination-in'; oCtx.beginPath();
+                        const pad = Math.max(f.soft, f.blur)*2;
+                        const off = document.createElement('canvas'); off.width=f.w+pad*2; off.height=f.h+pad*2;
+                        const o = off.getContext('2d'); o.translate(-(f.x-pad), -(f.y-pad)); o.filter=`blur(${f.blur}px)`; o.drawImage(img,0,0); o.setTransform(1,0,0,1,0,0);
+                        o.globalCompositeOperation='destination-in'; o.beginPath();
                         if(f.shape==='circle') {
-                            const g=oCtx.createRadialGradient(fw/2,fh/2,Math.max(0,r-f.soft/2),fw/2,fh/2,r+f.soft/2);
-                            g.addColorStop(0,'#000'); g.addColorStop(1,'transparent'); oCtx.fillStyle=g; oCtx.arc(fw/2,fh/2,r+f.soft,0,2*Math.PI); oCtx.fill();
+                            const g=o.createRadialGradient(off.width/2,off.height/2,Math.max(0,r-f.soft/2),off.width/2,off.height/2,r+f.soft/2);
+                            g.addColorStop(0,'#000'); g.addColorStop(1,'transparent'); o.fillStyle=g; o.arc(off.width/2,off.height/2,r+f.soft,0,2*Math.PI);
                         } else {
-                            oCtx.fillStyle='black'; oCtx.filter=`blur(${f.soft/2}px)`; 
-                            oCtx.rect((f.x-Math.floor(f.x-pad))+f.soft/4, (f.y-Math.floor(f.y-pad))+f.soft/4, f.w-f.soft/2, f.h-f.soft/2); oCtx.fill();
+                            o.fillStyle='black'; o.shadowColor='black'; o.shadowBlur=f.soft; o.rect(pad+f.soft/2, pad+f.soft/2, f.w-f.soft, f.h-f.soft);
                         }
-                        ctx.drawImage(off, Math.floor(f.x-pad), Math.floor(f.y-pad));
+                        o.fill(); x.drawImage(off, f.x-pad, f.y-pad);
                     } else {
-                        ctx.save(); ctx.beginPath();
-                        if(f.shape==='circle') ctx.arc(cx,cy,r,0,2*Math.PI); else ctx.rect(f.x,f.y,f.w,f.h);
-                        ctx.clip(); ctx.filter=`blur(${f.blur}px)`; ctx.drawImage(imgRef.current,0,0); ctx.restore();
+                        x.save(); x.beginPath(); if(f.shape==='circle') x.arc(cx,cy,r,0,2*Math.PI); else x.rect(f.x,f.y,f.w,f.h);
+                        x.clip(); x.filter=`blur(${f.blur}px)`; x.drawImage(img,0,0); x.restore();
                     }
                 });
-                const a = document.createElement('a'); a.download = '108FaceBlur.jpg';
-                a.href = cv.toDataURL('image/jpeg', 1.0); a.click();
+                const a = document.createElement('a'); a.download = '108FaceBlur_HQ.jpg'; a.href = cv.toDataURL('image/jpeg', 1.0); a.click();
             };
 
-            const saveZip = async () => {
-                if(!images.length) return; setZipping(true);
-                try {
-                    const zip = new JSZip();
-                    for(const item of images) {
-                        await new Promise(res => {
-                            const img = new Image(); img.crossOrigin="anonymous"; img.src=item.url;
-                            img.onload = () => {
-                                const c = document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight;
-                                const x = c.getContext('2d'); x.drawImage(img,0,0);
-                                (item.faces||[]).forEach(f => {
-                                    const cx = f.x+f.w/2, cy = f.y+f.h/2, r = Math.max(f.w, f.h)/2;
-                                    x.save(); x.beginPath();
-                                    if(f.shape==='circle') x.arc(cx,cy,r,0,2*Math.PI); else x.rect(f.x, f.y, f.w, f.h);
-                                    x.clip(); x.filter=`blur(${f.blur}px)`; x.drawImage(img,0,0); x.restore();
-                                });
-                                c.toBlob(b => { zip.file(`blurred_${item.name}`, b); res(); }, 'image/jpeg', 1.0);
-                            }
-                        });
-                    }
-                    const b = await zip.generateAsync({type:"blob"});
-                    const a = document.createElement('a'); a.href=URL.createObjectURL(b); a.download="108_Batch.zip"; a.click();
-                } catch(e) { alert("Zip Error"); }
-                setZipping(false);
+            const handleFile = async (e) => {
+                const files = Array.from(e.target.files);
+                const newImgs = await Promise.all(files.map(f => new Promise(res => {
+                    const r = new FileReader(); r.onload = (ev) => {
+                        const i = new Image(); i.onload = () => res({ id: Math.random().toString(), url: ev.target.result, name: f.name, faces: [], processed: false });
+                        i.src = ev.target.result;
+                    }; r.readAsDataURL(f);
+                })));
+                setImages(p => [...p, ...newImgs]); if(!curId && newImgs.length) setCurId(newImgs[0].id);
+                e.target.value = "";
             };
 
-            useEffect(() => {
-                const h = (e) => { if((e.key==='Delete'||e.key==='Backspace') && selId) deleteSel(); };
-                window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
-            }, [selId, images]);
-
-            const handleZoom = (d) => {
-                const s = Math.max(0.05, Math.min(10, scale * (1 - d)));
-                const rect = canvasRef.current.getBoundingClientRect();
-                const center = { x: rect.width / 2, y: rect.height / 2 };
-                setOffset({ x: center.x - (center.x - offset.x) * (s / scale), y: center.y - (center.y - offset.y) * (s / scale) });
-                setScale(s);
-            };
-
-            const selFace = getCurImg()?.faces.find(f => f.id === selId);
+            const selFace = getFaces().find(f => f.id === selId);
 
             return (
                 <div className="flex h-full font-sans text-gray-100">
                     <div className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col z-20 shadow-xl">
                         <div className="p-4 border-b border-slate-700 font-bold text-xl text-blue-400 flex justify-between items-center">
-                            108 Face Blur <span className={`text-xs px-2 py-0.5 rounded ${aiStatus==='ready'?'bg-green-900 text-green-400':'bg-yellow-900 text-yellow-400'}`}>{aiStatus==='ready'?'AI Ready':'Loading'}</span>
+                            108 Face Blur <span className={`text-xs px-2 py-0.5 rounded ${aiStatus==='ready'?'bg-green-900 text-green-400':'bg-yellow-900 text-yellow-400'}`}>{aiStatus==='ready'?'Ready':'Loading'}</span>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-6">
                             <div className="space-y-2">
@@ -443,61 +306,57 @@
                                     <Icon p={IconsData.Upload}/> อัปโหลดรูปภาพ
                                 </button>
                                 <input ref={fileRef} type="file" className="hidden" multiple accept="image/*" onChange={handleFile}/>
-                                {images.length > 0 && <div className="flex gap-2 overflow-x-auto pb-2">{images.map(img => (
+                                {images.length > 0 && <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">{images.map(img => (
                                     <div key={img.id} onClick={()=>setCurId(img.id)} className={`relative flex-none w-14 h-14 rounded border-2 cursor-pointer ${curId===img.id?'border-blue-500':'border-transparent opacity-50'}`}><img src={img.url} className="w-full h-full object-cover rounded-sm"/></div>
                                 ))}</div>}
-                                {images.length > 1 && <button onClick={saveZip} disabled={zipping} className="w-full py-1.5 bg-slate-700 text-xs rounded text-slate-300">{zipping?"Zipping...":"Download ZIP"}</button>}
                             </div>
                             <hr className="border-slate-700"/>
                             {selFace ? (
                                 <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg space-y-4">
-                                    <div className="flex justify-between font-bold text-yellow-500"><span>แก้ไข</span><button onClick={deleteSel} className="text-red-400"><Icon p={IconsData.Trash}/></button></div>
-                                    <div><div className="text-xs mb-1">ขนาด</div><input type="range" min="10" max="2000" value={selFace.w} onChange={e=>updateSel('w', Number(e.target.value))} className="w-full"/></div>
-                                    <div><div className="text-xs mb-1">ความเบลอ</div><input type="range" min="0" max="100" value={selFace.blur} onChange={e=>updateSel('blur', Number(e.target.value))} className="w-full"/></div>
-                                    <div><div className="text-xs mb-1">ความฟุ้ง</div><input type="range" min="0" max="100" value={selFace.soft} onChange={e=>updateSel('soft', Number(e.target.value))} className="w-full"/></div>
+                                    <div className="flex justify-between font-bold text-yellow-500"><span>ปรับแต่งจุดที่เลือก</span><button onClick={()=>{setImages(prev=>prev.map(img=>img.id===curId?{...img, faces: img.faces.filter(f=>f.id!==selId)}:img)); setSelId(null);}} className="text-red-400"><Icon p={IconsData.Trash}/></button></div>
+                                    <div><div className="text-xs mb-1">ขนาด (ขยายจากศูนย์กลาง)</div><input type="range" min="10" max="1500" value={selFace.w} onChange={e=>handleResize(Number(e.target.value))} className="w-full"/></div>
+                                    <div><div className="text-xs mb-1">เบลอ</div><input type="range" min="0" max="100" value={selFace.blur} onChange={e=>updateSel('blur', Number(e.target.value))} className="w-full"/></div>
+                                    <div><div className="text-xs mb-1">ความฟุ้งขอบ</div><input type="range" min="0" max="150" value={selFace.soft} onChange={e=>updateSel('soft', Number(e.target.value))} className="w-full"/></div>
                                     <div className="flex gap-2">
                                         <button onClick={()=>updateSel('shape','circle')} className={`flex-1 py-1 rounded text-xs border ${selFace.shape==='circle'?'bg-yellow-600 border-yellow-600 text-black':'border-slate-600'}`}>วงกลม</button>
                                         <button onClick={()=>updateSel('shape','square')} className={`flex-1 py-1 rounded text-xs border ${selFace.shape==='square'?'bg-yellow-600 border-yellow-600 text-black':'border-slate-600'}`}>สี่เหลี่ยม</button>
                                     </div>
-                                    <button onClick={()=>setSelId(null)} className="w-full py-2 bg-slate-700 rounded text-sm mt-2">เสร็จสิ้น</button>
+                                    <button onClick={()=>setSelId(null)} className="w-full py-2 bg-slate-700 rounded text-sm mt-2 font-bold">บันทึกจุดนี้</button>
                                 </div>
                             ) : (
                                 <div className="space-y-4 text-slate-300">
                                     <div className="font-bold text-sm">ค่าเริ่มต้น (Global)</div>
                                     <div><div className="text-xs mb-1">ความเบลอ</div><input type="range" min="0" max="100" value={defBlur} onChange={e=>updateGlobal('blur', Number(e.target.value))} className="w-full"/></div>
-                                    <div><div className="text-xs mb-1">ความฟุ้ง</div><input type="range" min="0" max="100" value={defSoft} onChange={e=>updateGlobal('soft', Number(e.target.value))} className="w-full"/></div>
-                                    <div className="flex gap-2">
-                                        <button onClick={()=>updateGlobal('shape','circle')} className={`flex-1 py-1.5 rounded border text-xs ${defShape==='circle'?'bg-blue-600 border-blue-600':'border-slate-700'}`}>วงกลม</button>
-                                        <button onClick={()=>updateGlobal('shape','square')} className={`flex-1 py-1.5 rounded border text-xs ${defShape==='square'?'bg-blue-600 border-blue-600':'border-slate-700'}`}>สี่เหลี่ยม</button>
-                                    </div>
+                                    <div><div className="text-xs mb-1">ความฟุ้งขอบ</div><input type="range" min="0" max="100" value={defSoft} onChange={e=>updateGlobal('soft', Number(e.target.value))} className="w-full"/></div>
                                     <div className="pt-4 space-y-2 border-t border-slate-700">
-                                        <button onClick={()=>{if(imgRef.current) detectFaces(imgRef.current, curId)}} disabled={isProcessing} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded flex justify-center items-center gap-2 text-sm">{isProcessing ? <span className="spinner"><Icon p={IconsData.Refresh}/></span> : <Icon p={IconsData.Refresh}/>} สแกนซ้ำ</button>
+                                        <button onClick={()=>{if(imgRef.current) detectFaces(imgRef.current, curId)}} disabled={isProcessing} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded flex justify-center items-center gap-2 text-sm">{isProcessing ? <span className="spinner"><Icon p={IconsData.Refresh}/></span> : <Icon p={IconsData.Refresh}/>} สแกนหน้าซ้ำ</button>
                                         <button onClick={()=>setShowOutlines(!showOutlines)} className="w-full py-2 bg-slate-700 hover:bg-slate-600 rounded flex justify-center items-center gap-2 text-sm">{showOutlines ? <><Icon p={IconsData.Eye}/> ซ่อนกรอบ</> : <><Icon p={IconsData.EyeOff}/> แสดงกรอบ</>}</button>
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {curId && <div className="p-4 border-t border-slate-700"><button onClick={saveImage} className="w-full py-3 bg-green-600 hover:bg-green-500 rounded font-bold shadow-lg flex justify-center items-center gap-2 btn"><Icon p={IconsData.Save}/> บันทึกภาพ</button></div>}
+                        {curId && <div className="p-4 border-t border-slate-700"><button onClick={saveImage} className="w-full py-3 bg-green-600 hover:bg-green-500 rounded font-bold shadow-lg flex justify-center items-center gap-2 btn"><Icon p={IconsData.Save}/> บันทึกภาพ (Full HQ)</button></div>}
                     </div>
 
                     <div className="flex-1 bg-black canvas-container flex items-center justify-center overflow-auto p-4 relative" 
-                         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp} onWheel={onWheel}>
+                         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={()=>interactionRef.current.mode='IDLE'} 
+                         onWheel={(e)=>setScale(s=>Math.max(0.05, Math.min(10, s*(1-e.deltaY*0.001))))}>
                         {!curId ? (
                             <div className="text-center text-slate-500 p-10 border-2 border-dashed border-slate-700 rounded-xl cursor-pointer hover:border-slate-500" onClick={()=>fileRef.current.click()}>
-                                <div className="mb-4 inline-block"><Icon p={IconsData.Upload} size={64}/></div>
+                                <Icon p={IconsData.Upload} className="w-16 h-16 mx-auto mb-4"/>
                                 <h2 className="text-xl font-bold">อัปโหลดรูปภาพ</h2>
-                                <p className="text-sm mt-2">คลิกเพื่อเริ่มใช้งาน</p>
+                                <p className="text-sm mt-2">เพื่อเริ่มใช้งานแบบพกพา</p>
                             </div>
                         ) : (
-                            <>
+                            <div className="relative" style={{width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>
                                 <canvas ref={canvasRef} className="shadow-2xl cursor-crosshair"/>
                                 <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-10">
-                                    <button onClick={(e)=>{ e.stopPropagation(); handleZoom(0.2); }} className="p-2 bg-slate-800/90 rounded-full text-white shadow-lg border border-slate-600 hover:bg-slate-700 btn"><Icon p={IconsData.ZoomIn}/></button>
-                                    <button onClick={(e)=>{ e.stopPropagation(); handleZoom(-0.2); }} className="p-2 bg-slate-800/90 rounded-full text-white shadow-lg border border-slate-600 hover:bg-slate-700 btn"><Icon p={IconsData.ZoomOut}/></button>
+                                    <button onClick={(e)=>{e.stopPropagation(); setScale(s=>Math.min(s*1.2, 10));}} className="p-2 bg-slate-800/90 rounded-full text-white shadow-lg border border-slate-600 hover:bg-slate-700 btn"><Icon p={IconsData.ZoomIn}/></button>
+                                    <button onClick={(e)=>{e.stopPropagation(); setScale(s=>Math.max(s/1.2, 0.05));}} className="p-2 bg-slate-800/90 rounded-full text-white shadow-lg border border-slate-600 hover:bg-slate-700 btn"><Icon p={IconsData.ZoomOut}/></button>
                                 </div>
-                                {isProcessing && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-white text-black px-6 py-3 rounded-full font-bold flex gap-3"><span className="spinner"><Icon p={IconsData.Refresh}/></span> กำลังสแกน...</div></div>}
-                            </>
+                            </div>
                         )}
+                        {isProcessing && <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-50"><div className="bg-white text-black px-6 py-3 rounded-full font-bold flex gap-3 shadow-2xl animate-pulse"><RefreshCw className="spinner w-5 h-5"/> กำลังสแกนหาใบหน้า...</div></div>}
                     </div>
                 </div>
             );
