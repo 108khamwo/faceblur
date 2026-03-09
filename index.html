@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <title>108 Face Blur (Stable Export v16)</title>
+    <title>108 Face Blur (Stable Export v16 - Improved AI)</title>
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -37,7 +37,7 @@
         const IconsData = {
             Upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
             Save: <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
-            Trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
+            Trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2-2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
             Refresh: <><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>,
             Eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
             EyeOff: <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>,
@@ -117,33 +117,78 @@
                 initAI();
             }, []);
 
+            // Handle Image Upload
+            const handleUpload = async (e) => {
+                const files = Array.from(e.target.files);
+                if (!files.length) return;
+
+                const newImages = await Promise.all(files.map(file => {
+                    return new Promise(resolve => {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                            resolve({ 
+                                id: Date.now() + Math.random().toString(), 
+                                url: ev.target.result, 
+                                faces: [], 
+                                processed: false 
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                }));
+
+                setImages(prev => {
+                    const updated = [...prev, ...newImages];
+                    // เลือกรูปภาพแรกของเซ็ตที่เพิ่งอัปโหลดเพื่อให้ AI เริ่มทำงานทันที
+                    if (!curId || prev.length === 0) {
+                        setTimeout(() => setCurId(newImages[0].id), 10);
+                    }
+                    return updated;
+                });
+                e.target.value = "";
+            };
+
             const detectFaces = async (img, targetId) => {
                 if (!window.faceapi || isProcessing) return;
                 saveToHistory();
                 setIsProcessing(true);
                 try {
                     const detCanvas = document.createElement('canvas');
-                    const maxDim = 800; 
+                    // เพิ่มความละเอียดสูงสุดเป็น 1200 เพื่อให้จับใบหน้าเล็กๆ ในภาพหมู่ได้ดีขึ้น
+                    const maxDim = 1200; 
                     const s = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
                     detCanvas.width = img.naturalWidth * s;
                     detCanvas.height = img.naturalHeight * s;
                     detCanvas.getContext('2d').drawImage(img, 0, 0, detCanvas.width, detCanvas.height);
 
-                    let dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 }));
+                    // ปรับความฉลาด: ใช้ SsdMobilenetv1 เป็นตัวหลัก เพราะแม่นยำกับหลายหน้ามากกว่า
+                    let dets = await faceapi.detectAllFaces(detCanvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }));
+                    
+                    // สำรองด้วย TinyFaceDetector กรณีที่ต้องการกวาดให้ละเอียดขึ้นอีก
                     if (dets.length === 0) {
-                        dets = await faceapi.detectAllFaces(detCanvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }));
+                        dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.2 }));
                     }
 
                     const newFaces = dets.map((d, i) => {
                         const b = d.box;
                         const rs = 1/s;
-                        const fw = b.width * rs * 1.35;
-                        const fh = b.height * rs * 1.45;
+                        
+                        // ปรับขนาดความพอดีของหน้า (Padding) ให้เล็กลงจากเดิม (1.35x -> 1.15x) เพื่อให้พอดีกรอบหน้ามากขึ้น
+                        const paddingX = 0.15; // เผื่อขอบข้าง 15%
+                        const paddingY = 0.20; // เผื่อขอบบนล่าง 20%
+                        const fw = b.width * rs * (1 + paddingX);
+                        const fh = b.height * rs * (1 + paddingY);
+                        
+                        // ขยับศูนย์กลางหน้าขึ้นเล็กน้อย (0.05) เพื่อให้คลุมหน้าผากได้ดี
+                        const cx = (b.x * rs) + (b.width * rs / 2);
+                        const cy = (b.y * rs) + (b.height * rs / 2) - (b.height * rs * 0.05);
+
                         return {
                             id: Date.now() + i,
-                            x: (b.x * rs) + (b.width * rs / 2) - (fw / 2),
-                            y: (b.y * rs) + (b.height * rs / 2) - (fh / 2),
-                            w: fw, h: fh,
+                            x: cx - (fw / 2),
+                            y: cy - (fh / 2),
+                            w: fw, 
+                            h: fh,
                             blur: defBlur, soft: defSoft, shape: defShape
                         };
                     });
@@ -169,13 +214,15 @@
                     }
                     setSelId(null);
                     setHistory([]);
+                    
+                    // เริ่มทำงานแทบจะทันที (ลดดีเลย์เหลือ 50ms)
                     if(!data.processed && aiStatus === "ready") {
-                        setTimeout(() => detectFaces(img, data.id), 500);
+                        setTimeout(() => detectFaces(img, data.id), 50);
                     }
                 };
             }, [curId, aiStatus]);
 
-            // --- Drawing Logic: แยก UI ออกจาก Export ---
+            // --- Drawing Logic ---
             const drawFaces = (ctx, img, faces, viewScale, isExport = false) => {
                 faces.forEach(f => {
                     const cx = f.x + f.w/2, cy = f.y + f.h/2, r = Math.max(f.w, f.h)/2;
@@ -322,7 +369,7 @@
                 const img = imgRef.current; if(!img) return;
                 const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
                 const ctx = cv.getContext('2d'); ctx.drawImage(img, 0, 0);
-                drawFaces(ctx, img, getFaces(), 1, true); // isExport = true (Remove outlines)
+                drawFaces(ctx, img, getFaces(), 1, true); // isExport = true
                 const a = document.createElement('a'); 
                 a.download = `Blurred_${Date.now()}.jpg`; 
                 a.href = cv.toDataURL('image/jpeg', 1.0); a.click();
@@ -440,7 +487,7 @@
                                     </div>
                                     <div className="pt-4 border-t border-slate-700/50 space-y-2">
                                         <button onClick={()=>{if(imgRef.current) detectFaces(imgRef.current, curId)}} disabled={isProcessing || aiStatus !== 'ready'} className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 rounded-2xl flex justify-center items-center gap-2 text-sm font-bold transition-all disabled:opacity-30 shadow-inner">
-                                            <Icon p={IconsData.Refresh} className={isProcessing?'spinner':''}/> สแกนอัตโนมัติ
+                                            <Icon p={IconsData.Refresh} className={isProcessing?'spinner':''}/> สแกนหน้าใหม่
                                         </button>
                                         <button onClick={()=>setShowOutlines(!showOutlines)} className="w-full py-3.5 bg-slate-700/30 hover:bg-slate-700/50 rounded-2xl flex justify-center items-center gap-2 text-sm transition-all text-slate-400">
                                             <Icon p={showOutlines?IconsData.Eye:IconsData.EyeOff}/> {showOutlines ? 'ซ่อนกรอบแนะนำ' : 'แสดงกรอบแนะนำ'}
@@ -469,7 +516,7 @@
                                     <Icon p={IconsData.Upload} className="w-12 h-12 text-slate-500 group-hover:text-white transition-colors"/>
                                 </div>
                                 <h2 className="text-3xl font-black text-slate-200 tracking-tight">108 FACE BLUR</h2>
-                                <p className="text-slate-500 mt-4 text-sm font-medium tracking-wide italic uppercase font-mono tracking-tighter">Professional v16.1 (Stable Export)</p>
+                                <p className="text-slate-500 mt-4 text-sm font-medium tracking-wide italic uppercase font-mono tracking-tighter">AI Improved Version 16.5</p>
                             </div>
                         ) : (
                             <div className="relative" style={{width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>
@@ -485,20 +532,11 @@
                             <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-10 duration-500">
                                 <div className="bg-slate-800/90 backdrop-blur border border-blue-500/50 px-8 py-4 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-5 text-white">
                                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                                    <span className="font-bold text-sm">AI สแกนหน้า...</span>
+                                    <span className="font-bold text-sm">AI สแกนหน้าอย่างละเอียด...</span>
                                 </div>
                             </div>
                         )}
-                        <input ref={fileRef} type="file" className="hidden" multiple accept="image/*" onChange={(e)=>{
-                            const files = Array.from(e.target.files);
-                            files.forEach(f => {
-                                const r = new FileReader(); r.onload=(ev)=>{
-                                    const i=new Image(); i.onload=()=>setImages(p=>[...p, {id:Date.now() + Math.random().toString(), url:ev.target.result, faces:[], processed:false}]);
-                                    i.src=ev.target.result;
-                                }; r.readAsDataURL(f);
-                            });
-                            e.target.value="";
-                        }}/>
+                        <input ref={fileRef} type="file" className="hidden" multiple accept="image/*" onChange={handleUpload}/>
                     </div>
                 </div>
             );
