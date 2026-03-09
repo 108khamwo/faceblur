@@ -161,12 +161,12 @@
                     detCanvas.height = img.naturalHeight * s;
                     detCanvas.getContext('2d').drawImage(img, 0, 0, detCanvas.width, detCanvas.height);
 
-                    // ปรับความฉลาด: ใช้ SsdMobilenetv1 เป็นตัวหลัก เพราะแม่นยำกับหลายหน้ามากกว่า
-                    let dets = await faceapi.detectAllFaces(detCanvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }));
+                    // ปรับความฉลาด: ใช้ SsdMobilenetv1 เป็นตัวหลัก ปรับ Confidence ขึ้นเป็น 0.45 เพื่อลดการตรวจจับสิ่งของที่คล้ายหน้า
+                    let dets = await faceapi.detectAllFaces(detCanvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.45 }));
                     
                     // สำรองด้วย TinyFaceDetector กรณีที่ต้องการกวาดให้ละเอียดขึ้นอีก
                     if (dets.length === 0) {
-                        dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.2 }));
+                        dets = await faceapi.detectAllFaces(detCanvas, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 }));
                     }
 
                     const newFaces = dets.map((d, i) => {
@@ -225,6 +225,7 @@
             // --- Drawing Logic ---
             const drawFaces = (ctx, img, faces, viewScale, isExport = false) => {
                 faces.forEach(f => {
+                    if (f.w <= 0 || f.h <= 0) return;
                     const cx = f.x + f.w/2, cy = f.y + f.h/2, r = Math.max(f.w, f.h)/2;
                     const isSel = f.id === selId;
 
@@ -232,26 +233,57 @@
                         const pad = Math.max(f.soft, f.blur) * 2.5; 
                         const fx = Math.floor(f.x - pad), fy = Math.floor(f.y - pad);
                         const fw = Math.floor(f.w + pad * 2), fh = Math.floor(f.h + pad * 2);
-                        const off = document.createElement('canvas'); off.width = fw; off.height = fh;
+                        if (fw <= 0 || fh <= 0) return;
+
+                        // 1. ดึงภาพส่วนนั้นออกมาก่อน (ไม่ใส่ Filter ใดๆ เพื่อเลี่ยงบั๊ก Safari/iOS รูปซ้อนรูป)
+                        const rawCanvas = document.createElement('canvas'); 
+                        rawCanvas.width = fw; rawCanvas.height = fh;
+                        const rCtx = rawCanvas.getContext('2d');
+                        rCtx.translate(-fx, -fy);
+                        rCtx.drawImage(img, 0, 0);
+
+                        // 2. นำภาพที่ดึงมาแล้ว มาใส่ Filter เบลอ (หลีกเลี่ยงการใช้คู่กับ translate)
+                        const off = document.createElement('canvas'); 
+                        off.width = fw; off.height = fh;
                         const oCtx = off.getContext('2d');
-                        
-                        oCtx.translate(-fx, -fy);
                         oCtx.filter = `blur(${f.blur}px)`;
-                        oCtx.drawImage(img, 0, 0);
-                        oCtx.setTransform(1,0,0,1,0,0);
+                        oCtx.drawImage(rawCanvas, 0, 0);
+                        
+                        // 3. ทำขอบฟุ้ง (Soft Edge)
                         oCtx.globalCompositeOperation = 'destination-in';
-                        oCtx.beginPath();
                         oCtx.filter = `blur(${f.soft}px)`;
                         oCtx.fillStyle = 'white';
+                        oCtx.beginPath();
                         if(f.shape === 'circle') oCtx.arc(fw/2, fh/2, r - (f.soft/2), 0, Math.PI*2);
                         else oCtx.rect(pad + (f.soft/2), pad + (f.soft/2), f.w - f.soft, f.h - f.soft);
                         oCtx.fill();
+                        
+                        // 4. วาดกลับลงไปที่ Canvas หลัก
                         ctx.drawImage(off, fx, fy);
                     } else {
-                        ctx.save(); ctx.beginPath();
+                        const fx = Math.floor(f.x), fy = Math.floor(f.y);
+                        const fw = Math.floor(f.w), fh = Math.floor(f.h);
+                        if (fw <= 0 || fh <= 0) return;
+
+                        const rawCanvas = document.createElement('canvas');
+                        rawCanvas.width = fw; rawCanvas.height = fh;
+                        const rCtx = rawCanvas.getContext('2d');
+                        rCtx.translate(-fx, -fy);
+                        rCtx.drawImage(img, 0, 0);
+
+                        const blurCanvas = document.createElement('canvas');
+                        blurCanvas.width = fw; blurCanvas.height = fh;
+                        const bCtx = blurCanvas.getContext('2d');
+                        bCtx.filter = `blur(${f.blur}px)`;
+                        bCtx.drawImage(rawCanvas, 0, 0);
+
+                        ctx.save(); 
+                        ctx.beginPath();
                         if(f.shape === 'circle') ctx.arc(cx, cy, r, 0, Math.PI*2);
                         else ctx.rect(f.x, f.y, f.w, f.h);
-                        ctx.clip(); ctx.filter = `blur(${f.blur}px)`; ctx.drawImage(img, 0, 0); ctx.restore();
+                        ctx.clip(); 
+                        ctx.drawImage(blurCanvas, fx, fy); 
+                        ctx.restore();
                     }
 
                     // Draw Selection UI only if not exporting
